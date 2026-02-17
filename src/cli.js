@@ -4,15 +4,17 @@
  * Usage: aimem <command> [options]
  */
 import { MemoryEngine } from './memory.js';
+import { extractMemories, extractFromConversation } from './extractor.js';
 import { parseArgs } from 'node:util';
 
-const engine = new MemoryEngine();
+const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+const engine = new MemoryEngine(undefined, { geminiApiKey: geminiKey });
 
 const command = process.argv[2];
 const args = process.argv.slice(3);
 
 const commands = {
-  add() {
+  async add() {
     const content = args.join(' ');
     if (!content) { console.log('用法: aimem add <内容> [--cat 类别] [--imp 重要性]'); return; }
     
@@ -25,22 +27,27 @@ const commands = {
     // 去掉flag
     const cleanContent = content.replace(/--cat\s+\S+/g, '').replace(/--imp\s+\S+/g, '').trim();
     
-    const mem = engine.add(cleanContent, { category, importance });
+    const mem = geminiKey
+      ? await engine.addAsync(cleanContent, { category, importance })
+      : engine.add(cleanContent, { category, importance });
     console.log(`✅ 记住了 (id:${mem.id}) [${mem.category}] imp:${mem.importance}`);
     console.log(`   ${mem.content}`);
   },
 
-  search() {
+  async search() {
     const semantic = args.includes('--semantic') || args.includes('-s');
     const query = args.filter(a => a !== '--semantic' && a !== '-s').join(' ');
     
     if (semantic) {
-      const results = engine.semanticSearch(query, { limit: 10 });
+      const results = geminiKey
+        ? await engine.semanticSearchAsync(query, { limit: 10 })
+        : engine.semanticSearch(query, { limit: 10 });
       if (results.length === 0) {
         console.log('🧠 语义搜索：没找到相关记忆');
         return;
       }
-      console.log(`🧠 语义搜索 "${query}" — 找到 ${results.length} 条:\n`);
+      const eng = results[0]?.engine || 'tfidf';
+      console.log(`🧠 语义搜索 "${query}" [${eng}] — 找到 ${results.length} 条:\n`);
       for (const r of results) {
         console.log(`  [${r.id}] 相似度:${r.similarity} 分数:${r.score} 📂${r.category}`);
         console.log(`      ${r.content}`);
@@ -89,6 +96,32 @@ const commands = {
   decay() {
     engine.applyDecay();
     console.log('⏰ 记忆衰减已应用');
+  },
+
+  async extract() {
+    const text = args.join(' ');
+    if (!text) { console.log('用法: aimem extract <文本>'); return; }
+    
+    const save = args.includes('--save');
+    const cleanText = text.replace('--save', '').trim();
+    const mems = extractMemories(cleanText);
+    
+    if (mems.length === 0) {
+      console.log('🔍 没有找到值得记忆的内容');
+      return;
+    }
+    
+    console.log(`🧠 提取了 ${mems.length} 条记忆${save ? '（已保存）' : '（预览，加 --save 保存）'}:\n`);
+    for (const m of mems) {
+      if (save) {
+        const saved = geminiKey
+          ? await engine.addAsync(m.content, m)
+          : engine.add(m.content, m);
+        console.log(`  ✅ [${saved.id}] [${m.category}] imp:${m.importance} ${m.content}`);
+      } else {
+        console.log(`  📝 [${m.category}] imp:${m.importance} ${m.content}`);
+      }
+    }
   },
 
   async export() {
@@ -141,6 +174,7 @@ const commands = {
   aimem add <内容> [--cat 类别] [--imp 0-1]  添加记忆
   aimem search [关键词]                       搜索记忆（关键词）
   aimem search -s [查询]                     语义搜索（找意思相近的）
+  aimem extract <文本> [--save]               从文本提取记忆
   aimem rebuild                              重建向量索引
   aimem forget <id>                          遗忘一条记忆
   aimem stats                                统计信息
