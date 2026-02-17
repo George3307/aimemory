@@ -1,6 +1,6 @@
 {
   "name": "aimemory-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI Agent Memory Service — 让你的AI真正记住你。跨平台、跨模型、支持MCP协议。",
   "type": "module",
   "main": "src/index.js",
