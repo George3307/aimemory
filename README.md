@@ -1,46 +1,50 @@
 # ✳️ aimemory
 
-**让你的AI真正记住你。**
+**Give your AI a real memory.**
 
-AI Agent 记忆服务 — 跨平台、跨模型、你完全掌控。
+AI Agent Memory Service — cross-platform, model-agnostic, fully under your control.
 
-## 为什么需要这个？
+## Why?
 
-ChatGPT、Claude等AI每次对话都从零开始。它们不记得你是谁、你喜欢什么、你做过什么决定。
+ChatGPT, Claude, Gemini — they all start from scratch every conversation. They don't remember who you are, what you prefer, or what decisions you've made.
 
-aimemory 解决这个问题：
-- 🧠 **智能记忆** — 自动从对话中提取值得记住的信息
-- 🔍 **语义搜索** — 找到意思相近但用词不同的记忆（不只是关键词匹配）
-- 📂 **分类管理** — 人物、偏好、决策、事件、知识自动归类
-- ⏰ **记忆衰减** — 模拟人类遗忘曲线，重要的记得久，琐碎的会淡忘
-- 🔌 **MCP协议** — 任何支持MCP的AI agent都能直接用
-- 💰 **零成本** — 本地SQLite存储，纯JS零外部依赖
+aimemory fixes that:
+- 🧠 **Smart extraction** — automatically picks out worth-remembering info from conversations
+- 🔍 **Semantic search** — finds memories by meaning, not just keywords (powered by Gemini embeddings + TF-IDF fallback)
+- 📂 **Auto-categorization** — people, preferences, decisions, events, knowledge
+- ⏰ **Memory decay** — simulates human forgetting curves: important things stick, trivial things fade
+- 🔌 **MCP protocol** — any MCP-compatible AI agent can use it directly
+- 🌍 **Bilingual** — full Chinese + English support, cross-language search
+- 💰 **Zero cost** — local SQLite storage, zero npm dependencies
 
-## 快速开始
+## Quick Start
 
 ```bash
-# 添加记忆
-aimem add "我在新加坡，喜欢搞数学和编程" --cat person --imp 0.8
+# Add a memory
+aimem add "User prefers dark mode and minimal UI" --cat preference --imp 0.8
 
-# 关键词搜索
-aimem search 新加坡
+# Keyword search
+aimem search "dark mode"
 
-# 语义搜索（找意思相近的）
-aimem search -s "怎么赚钱"
+# Semantic search (finds related meanings)
+aimem search -s "what does the user like"
 
-# 从文本自动提取记忆
-aimem extract "今天决定做AI记忆项目，用MCP协议"
+# Export all memories
+aimem export backup.json
 
-# 统计
+# Import memories
+aimem import backup.json
+
+# Stats
 aimem stats
 
-# 应用记忆衰减
+# Apply memory decay
 aimem decay
 ```
 
 ## MCP Server
 
-让你的AI agent通过MCP协议访问记忆：
+Let any AI agent access memories via MCP protocol:
 
 ```json
 {
@@ -53,56 +57,89 @@ aimem decay
 }
 ```
 
-### 可用工具
+### Available Tools
 
-| 工具 | 说明 |
-|------|------|
-| `memory_add` | 添加记忆 |
-| `memory_search` | 关键词搜索 |
-| `memory_semantic_search` | 语义搜索 |
-| `memory_forget` | 删除记忆 |
-| `memory_extract` | 从文本提取记忆 |
-| `memory_rebuild_index` | 重建向量索引 |
-| `memory_stats` | 统计信息 |
+| Tool | Description |
+|------|-------------|
+| `memory_add` | Store a new memory |
+| `memory_search` | Keyword search |
+| `memory_semantic_search` | Semantic similarity search |
+| `memory_forget` | Delete a memory |
+| `memory_extract` | Auto-extract memories from text |
+| `memory_rebuild_index` | Rebuild vector index |
+| `memory_stats` | Get statistics |
 
-## 技术架构
+## Architecture
 
 ```
 CLI / MCP Server
       ↓
   MemoryEngine (memory.js)
-   ├── 关键词搜索 (FTS5 + LIKE)
-   ├── 语义搜索 (TF-IDF + 余弦相似度)
-   ├── 记忆衰减 (遗忘曲线)
-   └── 实体关系
+   ├── Keyword search (FTS5 + LIKE)
+   ├── Semantic search (Gemini embedding + TF-IDF fallback)
+   ├── Memory decay (forgetting curve)
+   └── Entity relations
       ↓
   SQLite (db.js)
 ```
 
-- **语义搜索引擎**: 纯JS实现的TF-IDF + 余弦相似度，支持中英文双语
-- **存储**: SQLite + FTS5全文搜索
-- **零依赖**: 只用Node.js内置模块
+### Dual Search Engine
+- **Gemini embedding** (3072-dim) — real semantic understanding, cross-language
+- **TF-IDF fallback** — zero-dependency, works offline
+- Gemini is used when API key is available; TF-IDF kicks in automatically otherwise
 
-## 数据存储
+### Zero Dependencies
+Only uses Node.js built-in modules. No `node_modules` needed for core functionality.
 
-默认路径: `~/.aimemory/memories.db`
+## Data Storage
 
-可通过环境变量修改:
+Default: `~/.aimemory/memories.db`
+
+Override with:
 ```bash
 export AIMEM_DB=/path/to/your/memories.db
 ```
 
 ## Roadmap
 
-- [x] Phase 0: 核心引擎（存储+搜索+提取+衰减）
-- [x] 语义搜索（TF-IDF）
+- [x] Core engine (storage + search + extraction + decay)
+- [x] Semantic search (dual engine)
 - [x] MCP Server
-- [ ] npm包发布
+- [x] CLI with export/import
+- [ ] npm package publish
 - [ ] Web Dashboard
-- [ ] 真正的embedding模型（Phase 2）
-- [ ] 云同步
-- [ ] Chrome插件
+- [ ] Cloud sync
+- [ ] Chrome extension
+- [ ] Obsidian plugin
 
 ## License
 
 MIT
+
+---
+
+# 中文说明
+
+**让你的AI真正记住你。**
+
+AI Agent 记忆服务 — 跨平台、跨模型、你完全掌控。
+
+### 功能
+
+- 🧠 智能记忆提取 — 自动从对话中抽取值得记住的信息
+- 🔍 语义搜索 — 双引擎：Gemini embedding（跨语言）+ TF-IDF（离线兜底）
+- 📂 自动分类 — 人物、偏好、决策、事件、知识
+- ⏰ 记忆衰减 — 模拟人类遗忘曲线
+- 🔌 MCP协议 — 任何支持MCP的AI agent都能接入
+- 💰 零成本 — 本地SQLite，零外部依赖
+
+### 快速使用
+
+```bash
+aimem add "用户喜欢简洁的UI" --cat preference --imp 0.8
+aimem search -s "用户喜欢什么"
+aimem export backup.json
+aimem import backup.json
+```
+
+详细用法见上方英文文档。
