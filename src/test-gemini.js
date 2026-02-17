@@ -5,7 +5,8 @@ import { MemoryEngine } from './memory.js';
 import { unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const GEMINI_KEY = process.env.GEMINI_API_KEY || 'AIzaSyDJzgHI9O-yMs_JKfwzR0QnJ6XPl9RkxU4';
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
+if (!GEMINI_KEY) { console.error('请设置 GEMINI_API_KEY 环境变量'); process.exit(1); }
 const TEST_DB = resolve(import.meta.dirname, '../test-gemini.db');
 
 try { unlinkSync(TEST_DB); } catch {}
