@@ -1,0 +1,44 @@
+{
+  "name": "aimemory",
+  "version": "0.1.0",
+  "description": "AI Agent Memory Service — 让你的AI真正记住你。跨平台、跨模型、支持MCP协议。",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "aimem": "src/cli.js"
+  },
+  "scripts": {
+    "test": "node src/test.js",
+    "test:semantic": "node src/test-semantic.js",
+    "test:gemini": "node src/test-gemini.js",
+    "mcp": "node src/mcp-server.js"
+  },
+  "keywords": [
+    "ai",
+    "memory",
+    "agent",
+    "mcp",
+    "llm",
+    "semantic-search",
+    "embedding",
+    "chatgpt",
+    "claude",
+    "gemini",
+    "recall",
+    "context"
+  ],
+  "author": "aimemory",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aimemory/aimemory"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE"
+  ]
+}
