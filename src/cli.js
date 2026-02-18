@@ -5,6 +5,7 @@
  */
 import { MemoryEngine } from './memory.js';
 import { extractMemories, extractFromConversation } from './extractor.js';
+import { setupAll, printSetupResults } from './setup.js';
 import { parseArgs } from 'node:util';
 
 const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
@@ -70,9 +71,11 @@ const commands = {
     }
   },
 
-  rebuild() {
-    const count = engine.rebuildVectors();
-    console.log(`🔄 已重建 ${count} 条记忆的向量索引`);
+  async rebuild() {
+    const result = geminiKey ? await engine.rebuildVectorsAsync() : engine.rebuildVectors();
+    const count = typeof result === 'object' ? result.count : result;
+    const eng = typeof result === 'object' && result.gemini ? 'gemini' : 'tfidf';
+    console.log(`🔄 已重建 ${count} 条记忆的向量索引 [${eng}]`);
   },
 
   forget() {
@@ -166,6 +169,13 @@ const commands = {
     console.log('💡 建议运行 aimem rebuild 重建向量索引');
   },
 
+  setup() {
+    const force = args.includes('--force');
+    const only = args.filter(a => !a.startsWith('--'));
+    const results = setupAll({ force, only: only.length > 0 ? only : undefined });
+    printSetupResults(results);
+  },
+
   help() {
     console.log(`
 ✳️ aimemory - AI记忆管家 v0.1.0
@@ -181,7 +191,13 @@ const commands = {
   aimem export [文件路径]                     导出所有记忆为JSON
   aimem import <文件路径>                     从JSON导入记忆
   aimem decay                                应用记忆衰减
+  aimem setup [--force] [客户端]              自动配置MCP（Claude/Cursor/Windsurf/Cline）
   aimem help                                 帮助
+
+示例:
+  aimem setup                  自动检测并配置所有已安装的客户端
+  aimem setup --force          强制覆盖已有配置
+  aimem setup cursor           只配置 Cursor
     `);
   }
 };

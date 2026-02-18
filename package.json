@@ -5,7 +5,8 @@
   "type": "module",
   "main": "src/index.js",
   "bin": {
-    "aimem": "src/cli.js"
+    "aimem": "src/cli.js",
+    "aimemory-mcp": "src/mcp-server.js"
   },
   "scripts": {
     "test": "node src/test.js",

@@ -20,6 +20,14 @@ aimemory fixes that:
 ## Quick Start
 
 ```bash
+# 一行命令配置 MCP（自动检测 Claude Desktop / Cursor / Windsurf / Cline）
+npx aimemory-agent setup
+
+# Or if installed globally
+aimem setup
+```
+
+```bash
 # Add a memory
 aimem add "User prefers dark mode and minimal UI" --cat preference --imp 0.8
 
@@ -44,7 +52,15 @@ aimem decay
 
 ## MCP Server
 
-Let any AI agent access memories via MCP protocol:
+### Auto Setup (Recommended)
+
+```bash
+aimem setup              # 自动检测并配置所有已安装的客户端
+aimem setup --force      # 强制覆盖已有配置
+aimem setup cursor       # 只配置 Cursor
+```
+
+### Manual Config
 
 ```json
 {
@@ -67,6 +83,7 @@ Let any AI agent access memories via MCP protocol:
 | `memory_forget` | Delete a memory |
 | `memory_extract` | Auto-extract memories from text |
 | `memory_rebuild_index` | Rebuild vector index |
+| `memory_auto` | Auto-extract & save memories from conversation summary |
 | `memory_stats` | Get statistics |
 
 ## Architecture
@@ -136,6 +153,9 @@ AI Agent 记忆服务 — 跨平台、跨模型、你完全掌控。
 ### 快速使用
 
 ```bash
+# 一行命令配置 MCP
+aimem setup
+
 aimem add "用户喜欢简洁的UI" --cat preference --imp 0.8
 aimem search -s "用户喜欢什么"
 aimem export backup.json

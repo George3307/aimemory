@@ -6,9 +6,8 @@
  */
 import { MemoryEngine } from './memory.js';
 import { extractMemories } from './extractor.js';
-import { createInterface } from 'node:readline';
-
-const engine = new MemoryEngine();
+const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || null;
+const engine = new MemoryEngine(undefined, { geminiApiKey: geminiKey });
 
 const TOOLS = [
   {
@@ -85,6 +84,18 @@ const TOOLS = [
     name: 'memory_stats',
     description: 'Get memory statistics.',
     inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'memory_auto',
+    description: 'Automatically extract and save important memories from a conversation summary. Call this at the end of a conversation to persist key information. More convenient than manual memory_add — just pass in a summary and it handles extraction, categorization, and storage.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        summary: { type: 'string', description: 'Conversation summary or key points to extract memories from' },
+        source: { type: 'string', description: 'Source identifier (e.g. "chat", "project-review")' }
+      },
+      required: ['summary']
+    }
   }
 ];
 
@@ -130,6 +141,19 @@ function handleToolCall(name, args) {
       const count = engine.rebuildVectors();
       return { content: [{ type: 'text', text: `Rebuilt vector index for ${count} memories.` }] };
     }
+    case 'memory_auto': {
+      const mems = extractMemories(args.summary, args.source || 'auto');
+      const saved = [];
+      for (const m of mems) {
+        const result = engine.add(m.content, m);
+        saved.push(result);
+      }
+      if (saved.length === 0) {
+        return { content: [{ type: 'text', text: 'No memorable content found in the summary.' }] };
+      }
+      const text = saved.map(s => `[#${s.id}] [${s.category}] imp:${s.importance} "${s.content}"`).join('\n');
+      return { content: [{ type: 'text', text: `Auto-saved ${saved.length} memories:\n${text}` }] };
+    }
     case 'memory_stats': {
       const s = engine.stats();
       return { content: [{ type: 'text', text: `Total: ${s.totalMemories} memories, ${s.totalEntities} entities\nBy category: ${s.byCategory.map(c => `${c.category}:${c.count}`).join(', ')}` }] };
@@ -140,9 +164,6 @@ function handleToolCall(name, args) {
 }
 
 // JSON-RPC over stdio
-const rl = createInterface({ input: process.stdin });
-let buffer = '';
-
 function send(response) {
   const json = JSON.stringify(response);
   process.stdout.write(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
@@ -177,16 +198,37 @@ function handleMessage(msg) {
   }
 }
 
-rl.on('line', (line) => {
-  buffer += line;
-  // 简单的content-length解析
-  if (line.trim() === '' && buffer.includes('{')) {
+// Proper Content-Length based stdio transport
+let rawBuffer = Buffer.alloc(0);
+let expectedLength = -1;
+
+process.stdin.on('data', (chunk) => {
+  rawBuffer = Buffer.concat([rawBuffer, chunk]);
+  
+  while (true) {
+    if (expectedLength === -1) {
+      // Look for Content-Length header
+      const headerEnd = rawBuffer.indexOf('\r\n\r\n');
+      if (headerEnd === -1) break;
+      const header = rawBuffer.slice(0, headerEnd).toString();
+      const match = header.match(/Content-Length:\s*(\d+)/i);
+      if (!match) { rawBuffer = rawBuffer.slice(headerEnd + 4); continue; }
+      expectedLength = parseInt(match[1], 10);
+      rawBuffer = rawBuffer.slice(headerEnd + 4);
+    }
+    
+    if (rawBuffer.length < expectedLength) break;
+    
+    const body = rawBuffer.slice(0, expectedLength).toString();
+    rawBuffer = rawBuffer.slice(expectedLength);
+    expectedLength = -1;
+    
     try {
-      const jsonStart = buffer.indexOf('{');
-      const msg = JSON.parse(buffer.slice(jsonStart));
+      const msg = JSON.parse(body);
       handleMessage(msg);
-    } catch(e) { /* ignore parse errors */ }
-    buffer = '';
+    } catch(e) {
+      process.stderr.write(`Parse error: ${e.message}\n`);
+    }
   }
 });
 
