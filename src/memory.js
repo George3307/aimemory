@@ -44,9 +44,88 @@ export class MemoryEngine {
   }
 
   /**
-   * 添加一条记忆
+   * 对文本分词（中英文混合），返回词集合
+   */
+  _tokenize(text) {
+    const lower = text.toLowerCase();
+    // 提取中文字符（按2-gram切分）和英文单词
+    const zhChars = lower.match(/[\u4e00-\u9fa5]{2,}/g) || [];
+    const zhBigrams = [];
+    for (const seg of zhChars) {
+      for (let i = 0; i < seg.length - 1; i++) {
+        zhBigrams.push(seg.slice(i, i + 2));
+      }
+    }
+    const enWords = lower.match(/[a-z0-9]+/g) || [];
+    return new Set([...zhBigrams, ...enWords]);
+  }
+
+  /**
+   * 计算 Jaccard 相似度
+   */
+  _jaccardSimilarity(setA, setB) {
+    if (setA.size === 0 && setB.size === 0) return 1;
+    let intersection = 0;
+    for (const item of setA) {
+      if (setB.has(item)) intersection++;
+    }
+    const union = setA.size + setB.size - intersection;
+    return union === 0 ? 0 : intersection / union;
+  }
+
+  /**
+   * 检查是否已存在高度相似的记忆
+   * @returns {object|null} 已有的相似记忆，或null
+   */
+  _findDuplicate(content, category = null, threshold = 0.7) {
+    const contentTokens = this._tokenize(content);
+    if (contentTokens.size === 0) return null;
+
+    // 从内容中提取关键词用于LIKE搜索缩小范围
+    const sampleTokens = [...contentTokens].slice(0, 5);
+    let candidates = [];
+    for (const token of sampleTokens) {
+      const rows = this.db.prepare(
+        `SELECT id, content, category, importance FROM memories WHERE content LIKE ? LIMIT 50`
+      ).all(`%${token}%`);
+      candidates.push(...rows);
+    }
+
+    // 去重候选
+    const seen = new Set();
+    candidates = candidates.filter(r => {
+      if (seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    });
+
+    // 计算相似度
+    for (const candidate of candidates) {
+      const candidateTokens = this._tokenize(candidate.content);
+      const similarity = this._jaccardSimilarity(contentTokens, candidateTokens);
+      if (similarity >= threshold) {
+        return { ...candidate, similarity: Math.round(similarity * 1000) / 1000 };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 添加一条记忆（自动去重）
    */
   add(content, { category = 'general', importance = 0.5, source = null, tags = [] } = {}) {
+    // 去重检查：如果已有高度相似的记忆，跳过添加
+    const existing = this._findDuplicate(content, category);
+    if (existing) {
+      // 如果新的importance更高，更新已有记忆的importance
+      if (importance > existing.importance) {
+        this.setImportance(existing.id, importance);
+        existing.importance = importance;
+      }
+      return { id: existing.id, content: existing.content, category: existing.category, importance: existing.importance, duplicate: true };
+    }
+
     const stmt = this.db.prepare(`
       INSERT INTO memories (content, category, importance, source, tags)
       VALUES (?, ?, ?, ?, ?)
@@ -70,6 +149,9 @@ export class MemoryEngine {
    */
   async addAsync(content, opts = {}) {
     const mem = this.add(content, opts);
+    
+    // 如果是重复记忆，直接返回
+    if (mem.duplicate) return mem;
     
     // 如果有Gemini，生成dense embedding
     if (this._gemini) {
