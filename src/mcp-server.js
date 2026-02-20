@@ -99,10 +99,10 @@ const TOOLS = [
   }
 ];
 
-function handleToolCall(name, args) {
+async function handleToolCall(name, args) {
   switch (name) {
     case 'memory_add': {
-      const result = engine.add(args.content, {
+      const result = await engine.addAsync(args.content, {
         category: args.category || 'general',
         importance: args.importance || 0.5,
         tags: args.tags || []
@@ -128,24 +128,24 @@ function handleToolCall(name, args) {
       return { content: [{ type: 'text', text: mems.length > 0 ? `Extracted ${mems.length} memories${args.auto_save ? ' (saved)' : ''}:\n${text}` : 'No memorable content found.' }] };
     }
     case 'memory_semantic_search': {
-      const results = engine.semanticSearch(args.query, {
+      const results = await engine.semanticSearchAsync(args.query, {
         limit: args.limit || 10,
         category: args.category,
         minScore: args.min_score || 0.05
       });
       if (results.length === 0) return { content: [{ type: 'text', text: 'No semantically similar memories found.' }] };
-      const text = results.map(r => `[#${r.id}] sim:${r.similarity} score:${r.score} (${r.category}) ${r.content}`).join('\n');
+      const text = results.map(r => `[#${r.id}] sim:${r.similarity} score:${r.score} (${r.category}|${r.engine || 'tfidf'}) ${r.content}`).join('\n');
       return { content: [{ type: 'text', text: `Found ${results.length} similar memories:\n${text}` }] };
     }
     case 'memory_rebuild_index': {
-      const count = engine.rebuildVectors();
-      return { content: [{ type: 'text', text: `Rebuilt vector index for ${count} memories.` }] };
+      const result = await engine.rebuildVectorsAsync();
+      return { content: [{ type: 'text', text: `Rebuilt vector index for ${result.count} memories (local:${result.local}, gemini:${result.gemini}).` }] };
     }
     case 'memory_auto': {
       const mems = extractMemories(args.summary, args.source || 'auto');
       const saved = [];
       for (const m of mems) {
-        const result = engine.add(m.content, m);
+        const result = await engine.addAsync(m.content, m);
         saved.push(result);
       }
       if (saved.length === 0) {
@@ -177,19 +177,18 @@ function handleMessage(msg) {
       send({ jsonrpc: '2.0', id, result: {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'aimemory', version: '0.1.0' }
+        serverInfo: { name: 'aimemory', version: '0.2.0' }
       }});
       break;
     case 'tools/list':
       send({ jsonrpc: '2.0', id, result: { tools: TOOLS } });
       break;
     case 'tools/call':
-      try {
-        const result = handleToolCall(params.name, params.arguments || {});
+      handleToolCall(params.name, params.arguments || {}).then(result => {
         send({ jsonrpc: '2.0', id, result });
-      } catch (e) {
+      }).catch(e => {
         send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true } });
-      }
+      });
       break;
     case 'notifications/initialized':
       break; // ack
