@@ -5,14 +5,32 @@
 import { openDB } from './db.js';
 import { TfIdfEngine, cosineSimilarity, serializeVector, deserializeVector } from './embedding.js';
 import { GeminiEmbedding, cosineSimilarityDense, serializeDenseVector, deserializeDenseVector } from './gemini-embedding.js';
+import {
+  embed as localEmbed,
+  embedBatch as localEmbedBatch,
+  cosineSimilarity as localCosineSim,
+  vectorToBase64,
+  base64ToVector,
+  EMBEDDING_DIM as LOCAL_DIM,
+} from './local-embedding.js';
 
 export class MemoryEngine {
-  constructor(dbPath, { geminiApiKey = null } = {}) {
+  constructor(dbPath, { geminiApiKey = null, useLocalEmbedding = true } = {}) {
     this.db = openDB(dbPath);
     this._tfidf = null; // lazy load
     this._gemini = null;
+    this._useLocal = useLocalEmbedding;
     if (geminiApiKey) {
       this._gemini = new GeminiEmbedding(geminiApiKey);
+    }
+    // Ensure local_vectors table exists
+    if (this._useLocal) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS memory_local_vectors (
+          memory_id INTEGER PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE,
+          vector TEXT NOT NULL
+        )
+      `);
     }
   }
 
@@ -153,14 +171,24 @@ export class MemoryEngine {
     // 如果是重复记忆，直接返回
     if (mem.duplicate) return mem;
     
-    // 如果有Gemini，生成dense embedding
+    // Local MiniLM embedding (default, zero cost)
+    if (this._useLocal) {
+      try {
+        const vec = await localEmbed(content);
+        this.db.prepare('INSERT OR REPLACE INTO memory_local_vectors (memory_id, vector) VALUES (?, ?)')
+          .run(mem.id, vectorToBase64(vec));
+      } catch(e) {
+        process.stderr.write(`Local embedding failed for #${mem.id}: ${e.message}\n`);
+      }
+    }
+    
+    // 如果有Gemini，也生成dense embedding
     if (this._gemini) {
       try {
         const vec = await this._gemini.embed(content);
         this.db.prepare('INSERT OR REPLACE INTO memory_dense_vectors (memory_id, vector) VALUES (?, ?)')
           .run(mem.id, serializeDenseVector(vec));
       } catch(e) {
-        // Gemini失败不影响，TF-IDF兜底
         process.stderr.write(`Gemini embedding failed for #${mem.id}: ${e.message}\n`);
       }
     }
@@ -300,7 +328,58 @@ export class MemoryEngine {
    * 异步语义搜索 — Gemini优先，TF-IDF兜底
    */
   async semanticSearchAsync(query, { limit = 10, category = null, minImportance = 0, minScore = 0.05 } = {}) {
-    // 如果有Gemini且有dense向量，用Gemini
+    // Priority 1: Local MiniLM (zero cost, fast)
+    if (this._useLocal) {
+      try {
+        const localCount = this.db.prepare('SELECT COUNT(*) as c FROM memory_local_vectors').get().c;
+        if (localCount > 0) {
+          const queryVec = await localEmbed(query);
+          
+          let sql = `
+            SELECT lv.memory_id, lv.vector, m.*
+            FROM memory_local_vectors lv
+            JOIN memories m ON m.id = lv.memory_id
+            WHERE m.importance >= ?
+            ${category ? 'AND m.category = ?' : ''}
+          `;
+          const params = category ? [minImportance, category] : [minImportance];
+          const rows = this.db.prepare(sql).all(...params);
+          
+          const scored = rows.map(row => {
+            const memVec = base64ToVector(row.vector);
+            const similarity = localCosineSim(queryVec, memVec);
+            const score = similarity * (0.5 + 0.5 * row.importance) * row.decay_score;
+            return { ...row, similarity, score };
+          });
+          
+          const results = scored
+            .filter(r => r.similarity >= minScore)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit);
+          
+          const updateStmt = this.db.prepare(
+            "UPDATE memories SET last_accessed = datetime('now'), access_count = access_count + 1 WHERE id = ?"
+          );
+          for (const r of results) updateStmt.run(r.memory_id);
+          
+          return results.map(r => ({
+            id: r.memory_id,
+            content: r.content,
+            category: r.category,
+            importance: r.importance,
+            similarity: Math.round(r.similarity * 1000) / 1000,
+            score: Math.round(r.score * 1000) / 1000,
+            tags: JSON.parse(r.tags || '[]'),
+            created_at: r.created_at,
+            engine: 'local-minilm'
+          }));
+        }
+      } catch(e) {
+        process.stderr.write(`Local search failed, trying Gemini: ${e.message}\n`);
+      }
+    }
+    
+    // Priority 2: Gemini API
     if (this._gemini) {
       try {
         const denseCount = this.db.prepare('SELECT COUNT(*) as c FROM memory_dense_vectors').get().c;
@@ -362,27 +441,47 @@ export class MemoryEngine {
   async rebuildVectorsAsync() {
     // 先重建TF-IDF
     const count = this.rebuildVectors();
+    const allMemories = this.db.prepare('SELECT id, content FROM memories').all();
+    const texts = allMemories.map(m => m.content);
+    let local = false, gemini = false;
     
-    // 如果有Gemini，也重建dense vectors
-    if (this._gemini) {
-      const allMemories = this.db.prepare('SELECT id, content FROM memories').all();
-      const texts = allMemories.map(m => m.content);
-      
-      const vectors = await this._gemini.embedBatch(texts);
-      
-      const insertStmt = this.db.prepare(
-        'INSERT OR REPLACE INTO memory_dense_vectors (memory_id, vector) VALUES (?, ?)'
-      );
-      this.db.prepare('BEGIN').run();
-      for (let i = 0; i < allMemories.length; i++) {
-        insertStmt.run(allMemories[i].id, serializeDenseVector(vectors[i]));
+    // Rebuild local MiniLM vectors
+    if (this._useLocal && allMemories.length > 0) {
+      try {
+        const vectors = await localEmbedBatch(texts);
+        const insertStmt = this.db.prepare(
+          'INSERT OR REPLACE INTO memory_local_vectors (memory_id, vector) VALUES (?, ?)'
+        );
+        this.db.prepare('BEGIN').run();
+        for (let i = 0; i < allMemories.length; i++) {
+          insertStmt.run(allMemories[i].id, vectorToBase64(vectors[i]));
+        }
+        this.db.prepare('COMMIT').run();
+        local = true;
+      } catch(e) {
+        process.stderr.write(`Local vector rebuild failed: ${e.message}\n`);
       }
-      this.db.prepare('COMMIT').run();
-      
-      return { count, gemini: true };
     }
     
-    return { count, gemini: false };
+    // Rebuild Gemini dense vectors
+    if (this._gemini && allMemories.length > 0) {
+      try {
+        const vectors = await this._gemini.embedBatch(texts);
+        const insertStmt = this.db.prepare(
+          'INSERT OR REPLACE INTO memory_dense_vectors (memory_id, vector) VALUES (?, ?)'
+        );
+        this.db.prepare('BEGIN').run();
+        for (let i = 0; i < allMemories.length; i++) {
+          insertStmt.run(allMemories[i].id, serializeDenseVector(vectors[i]));
+        }
+        this.db.prepare('COMMIT').run();
+        gemini = true;
+      } catch(e) {
+        process.stderr.write(`Gemini vector rebuild failed: ${e.message}\n`);
+      }
+    }
+    
+    return { count, local, gemini };
   }
 
   /**

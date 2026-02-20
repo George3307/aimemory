@@ -57,4 +57,10 @@
 - 测试结果：Gemini碾压TF-IDF，跨语言搜索直接能用
 - db.js新增 `memory_dense_vectors` 表
 
-## Phase 0 进度：~90%
+## 2026-02-20 更新
+- 🧠 集成本地 embedding 引擎：all-MiniLM-L6-v2 (22M params, 384-dim)
+- 零 API 成本，CPU 推理，~23ms/条
+- 三引擎架构：Local MiniLM > Gemini API > TF-IDF 兜底
+- 下一步：集成到 memory.js 的 semanticSearch，替换 TF-IDF 为默认引擎
+
+## Phase 0 进度：~95%
