@@ -10,12 +10,13 @@ ChatGPT, Claude, Gemini — they all start from scratch every conversation. They
 
 aimemory fixes that:
 - 🧠 **Smart extraction** — automatically picks out worth-remembering info from conversations
-- 🔍 **Semantic search** — finds memories by meaning, not just keywords (powered by Gemini embeddings + TF-IDF fallback)
+- 🔍 **Semantic search** — finds memories by meaning, not just keywords (3-engine: local neural network → Gemini API → TF-IDF)
 - 📂 **Auto-categorization** — people, preferences, decisions, events, knowledge
 - ⏰ **Memory decay** — simulates human forgetting curves: important things stick, trivial things fade
 - 🔌 **MCP protocol** — any MCP-compatible AI agent can use it directly
 - 🌍 **Bilingual** — full Chinese + English support, cross-language search
-- 💰 **Zero cost** — local SQLite storage, zero npm dependencies
+- 🧠 **Local neural network** — all-MiniLM-L6-v2 (22M params), runs on CPU, zero API cost
+- 💰 **Zero cost** — local SQLite storage, works fully offline
 
 ## Quick Start
 
