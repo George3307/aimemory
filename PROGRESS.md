@@ -63,4 +63,10 @@
 - 三引擎架构：Local MiniLM > Gemini API > TF-IDF 兜底
 - 下一步：集成到 memory.js 的 semanticSearch，替换 TF-IDF 为默认引擎
 
-## Phase 0 进度：~95%
+## 2026-02-20 14:22 更新
+- MCP Server 升级：所有工具用 async + local embedding
+- 8 个 MCP 工具全部测试通过
+- OpenClaw 插件版 SKILL.md 写好
+- npm publish 需要重新登录（token 过期）
+
+## Phase 0 进度：~99% (只差 npm publish)
