@@ -41,5 +41,8 @@
     "src/",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1"
+  }
 }
